@@ -419,7 +419,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
     
     // NEW: Temporary logging for validation
     useEffect(() => {
-        console.log("Remapper Feedback Scope:", Object.keys(feedbackRegistry));
+        console.log('[Remapper] Connected to Feedback Registry:', Object.keys(feedbackRegistry));
     }, [feedbackRegistry]);
 
     useEffect(() => {
