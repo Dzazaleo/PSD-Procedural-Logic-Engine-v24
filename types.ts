@@ -3,6 +3,21 @@ import { Node, Edge } from 'reactflow';
 
 export const MAX_BOUNDARY_VIOLATION_PERCENT = 0.03;
 
+// --- OPTICAL METRICS ---
+export interface OpticalMetrics {
+  bounds: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
+  visualCenter: {
+    x: number;
+    y: number;
+  };
+  pixelDensity: number;
+}
+
 export interface ContainerDefinition {
   id: string;
   name: string;
@@ -138,6 +153,15 @@ export interface ReviewerStrategy {
     CARO_Audit: string; 
     overrides: LayerOverride[]; 
 }
+
+// --- FEEDBACK LOOP ---
+export interface FeedbackStrategy {
+  overrides: LayerOverride[];
+  directives?: string[];
+  isCommitted?: boolean;
+}
+
+export type FeedbackRegistry = Record<string, Record<string, FeedbackStrategy>>;
 
 export interface TransformedLayer extends SerializableLayer {
   transform: {
