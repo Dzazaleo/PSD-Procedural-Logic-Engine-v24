@@ -105,11 +105,23 @@ const ReviewerInstanceRow = memo(({
     
     const hasStrategy = !!instanceState.reviewerStrategy?.overrides?.length;
 
-    // Detect Synchronization Status
+    // Detect Synchronization Status & Auto-Verify
     useEffect(() => {
         const synced = checkSynchronization(payload, instanceState.reviewerStrategy);
         setIsSynced(synced);
-    }, [payload, instanceState.reviewerStrategy]);
+
+        // Auto-Verification Logic:
+        // If we have explicit overrides (hasStrategy) AND they are fully synced (synced) AND not yet verified (!isPolished),
+        // we automatically verify the result to unlock the export gate.
+        if (synced && hasStrategy && !isPolished && payload) {
+            // We use a small delay to allow the "Synced" visual state to be seen briefly 
+            // and to ensure render stability before triggering the update.
+            const timer = setTimeout(() => {
+                onVerify(index);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [payload, instanceState.reviewerStrategy, isPolished, hasStrategy, onVerify, index]);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -197,7 +209,7 @@ const ReviewerInstanceRow = memo(({
 
                      {/* Verify Button */}
                      {isPolished ? (
-                         <div className="flex items-center space-x-1 px-2 py-1 bg-emerald-900/20 border border-emerald-500/30 rounded text-emerald-400">
+                         <div className="flex items-center space-x-1 px-2 py-1 bg-emerald-900/20 border border-emerald-500/30 rounded text-emerald-400" title="Auto-verified by physics sync">
                              <ShieldCheck className="w-3 h-3" />
                              <span className="text-[9px] font-bold">VERIFIED</span>
                          </div>
