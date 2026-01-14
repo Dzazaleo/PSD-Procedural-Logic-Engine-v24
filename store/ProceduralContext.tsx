@@ -465,7 +465,7 @@ export const ProceduralStoreProvider: React.FC<{ children: React.ReactNode }> = 
     setGlobalVersion(v => v + 1);
   }, []);
 
-  // NEW: Deep Pipeline Flush to clear AI artifacts on reset
+  // NEW: Deep Pipeline Flush to clear AI artifacts on reset.
   // Updated to ensure it clears all registry levels associated with a specific slot index
   const flushPipelineInstance = useCallback((nodeId: string, handleId: string) => {
       const clearEntry = (registry: Record<string, Record<string, any>>, setRegistry: React.Dispatch<React.SetStateAction<any>>) => {
