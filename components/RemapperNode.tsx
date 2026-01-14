@@ -1,3 +1,4 @@
+
 import React, { memo, useMemo, useEffect, useCallback, useState, useRef } from 'react';
 import { Handle, Position, NodeProps, useEdges, useReactFlow, useNodes, useUpdateNodeInternals } from 'reactflow';
 import { PSDNodeData, SerializableLayer, TransformedPayload, TransformedLayer, MAX_BOUNDARY_VIOLATION_PERCENT, LayoutStrategy, LayerOverride } from '../types';
@@ -641,6 +642,10 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                         // D. BOUNDARY SOLVER (Universal: All items subject to clipping rules)
                         if (strategy.physicsRules?.preventClipping) {
                             transformed.forEach(l => {
+                                // Phase 2.2 Fix: Boundary Lock
+                                // Allow manual overrides to "bleed" out of bounds (skip clipping).
+                                if (getOverride(l.id)) return;
+
                                 const minX = targetRect.x;
                                 const maxX = targetRect.x + targetRect.w - l.coords.w;
                                 const clampedX = Math.max(minX, Math.min(l.coords.x, maxX));
