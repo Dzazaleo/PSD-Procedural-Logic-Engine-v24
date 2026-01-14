@@ -27,9 +27,6 @@ interface InstanceData {
   strategyUsed?: boolean;
 }
 
-// ... (GenerativePreviewOverlay, OverrideInspector, getLayerAudit, RemapperInstanceRow subcomponents remain exactly the same) ...
-// (Skipping generic UI components for brevity, assume they are preserved)
-
 // --- SUB-COMPONENT: Generative Preview Overlay ---
 interface OverlayProps {
     previewUrl?: string | null;
@@ -416,6 +413,12 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
     useEffect(() => { return () => unregisterNode(id); }, [id, unregisterNode]);
     useEffect(() => { updateNodeInternals(id); }, [id, instanceCount, updateNodeInternals]);
+    
+    // NEW: Temporary logging for validation
+    useEffect(() => {
+        console.log('[Remapper] Connected to Feedback Registry:', Object.keys(feedbackRegistry));
+    }, [feedbackRegistry]);
+
     useEffect(() => {
         const blobs = previousBlobsRef.current;
         return () => { Object.values(blobs).forEach((url) => { if (typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url); }); };
