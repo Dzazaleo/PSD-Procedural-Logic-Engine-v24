@@ -416,12 +416,6 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
     useEffect(() => { return () => unregisterNode(id); }, [id, unregisterNode]);
     useEffect(() => { updateNodeInternals(id); }, [id, instanceCount, updateNodeInternals]);
-    
-    // NEW: Temporary logging for validation
-    useEffect(() => {
-        console.log('[Remapper] Connected to Feedback Registry:', Object.keys(feedbackRegistry));
-    }, [feedbackRegistry]);
-
     useEffect(() => {
         const blobs = previousBlobsRef.current;
         return () => { Object.values(blobs).forEach((url) => { if (typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url); }); };
@@ -500,8 +494,35 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
             if (sourceData.ready && targetData.ready) {
                 const sourceRect = sourceData.originalBounds;
                 const targetRect = targetData.bounds;
-                const strategy = sourceData.aiStrategy;
+                const rawStrategy = sourceData.aiStrategy;
                 
+                // --- FEEDBACK LOOP MERGE LOGIC ---
+                // Listen for downstream overrides from the Reviewer Node
+                const feedback = feedbackRegistry[id]?.[`result-out-${i}`];
+                
+                let strategy = rawStrategy;
+                if (feedback && feedback.overrides) {
+                    console.log(`[Remapper] Applying Hard Constraints for slot ${i}`, feedback.overrides);
+                    
+                    // Create an effective strategy that prioritizes the Reviewer's hard constraints
+                    strategy = {
+                        ...(rawStrategy || {
+                            suggestedScale: 1.0,
+                            anchor: 'CENTER',
+                            generativePrompt: '',
+                            reasoning: 'Manual Reviewer Override',
+                            method: 'GEOMETRIC'
+                        }),
+                        overrides: feedback.overrides,
+                        directives: feedback.directives || rawStrategy?.directives,
+                        // Ensure we mark this as having explicit manual intent
+                        isExplicitIntent: true
+                    };
+                    
+                    // Update sourceData to reflect the effective strategy in the UI (Inspector)
+                    sourceData = { ...sourceData, aiStrategy: strategy };
+                }
+
                 // STEP 2: Target-Relative Scaling (Decoupling)
                 let globalScale = strategy?.suggestedScale || 1.0;
                 strategyUsed = !!strategy;
@@ -612,7 +633,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                             }
                         }
 
-                        // C. OVERLAY SOLVER (Semantic:  Only 'overlay' items)
+                        // C. OVERLAY SOLVER (Semantic: Only 'overlay' items)
                         const overlayItems = transformed.filter(l => getOverride(l.id)?.layoutRole === 'overlay');
                         overlayItems.forEach(l => {
                             const anchorId = getOverride(l.id)?.linkedAnchorId;
