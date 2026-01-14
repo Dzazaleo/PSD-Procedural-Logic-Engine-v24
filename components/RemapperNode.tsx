@@ -606,7 +606,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                             }
                         }
 
-                        // C. OVERLAY SOLVER (Semantic: Only 'overlay' items)
+                        // C. OVERLAY SOLVER (Semantic:  Only 'overlay' items)
                         const overlayItems = transformed.filter(l => getOverride(l.id)?.layoutRole === 'overlay');
                         overlayItems.forEach(l => {
                             const anchorId = getOverride(l.id)?.linkedAnchorId;
