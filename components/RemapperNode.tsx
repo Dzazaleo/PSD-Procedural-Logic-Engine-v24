@@ -221,7 +221,7 @@ const RemapperInstanceRow = memo(({ index, nodeId }: RemapperInstanceProps) => {
             isConfirmed: feedback?.isCommitted || false,
             requiresGeneration: strategy?.method === 'GENERATIVE' || strategy?.method === 'HYBRID',
             sourceReference: sourceData.aiStrategy?.sourceReference,
-            generationId: sourceData.aiStrategy?.timestamp || Date.now(), // Use strategy timestamp to version the transform
+            generationId: sourceData.aiStrategy?.timestamp || Date.now(), // Use strategy timestamp to version the  transform
             previewUrl: sourceData.previewUrl,
             triangulation: strategy?.triangulation
         };
