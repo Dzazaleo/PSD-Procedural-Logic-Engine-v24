@@ -1,9 +1,9 @@
 import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useUpdateNodeInternals, useEdges, useNodes } from 'reactflow';
-import { PSDNodeData, TransformedPayload, LayerOverride, ChatMessage, ReviewerStrategy, ReviewerInstanceState, TransformedLayer } from '../types';
+import { PSDNodeData, TransformedPayload, LayerOverride, ChatMessage, ReviewerStrategy, ReviewerInstanceState, TransformedLayer, FeedbackStrategy } from '../types';
 import { useProceduralStore } from '../store/ProceduralContext';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Check, MessageSquare, AlertCircle, ShieldCheck, Search, Activity, Brain, Ban, Link as LinkIcon, Layers, Lock, Move, Anchor } from 'lucide-react';
+import { Check, MessageSquare, AlertCircle, ShieldCheck, Search, Activity, Brain, Ban, Link as LinkIcon, Layers, Lock, Move, Anchor, Zap } from 'lucide-react';
 
 const DEFAULT_INSTANCE_STATE: ReviewerInstanceState = {
     chatHistory: [],
@@ -44,9 +44,9 @@ const SemanticBadge = ({ role, anchorId, citedRule }: SemanticBadgeProps) => {
 };
 
 const ReviewerInstanceRow = memo(({ 
-    index, instanceState, payload, onChat, onVerify, isPolished, isAnalyzing, activeKnowledge 
+    index, instanceState, payload, onChat, onVerify, onCommit, isPolished, isAnalyzing, isSyncing, activeKnowledge 
 }: { 
-    index: number, instanceState: ReviewerInstanceState, payload: TransformedPayload | null, onChat: (idx: number, msg: string) => void, onVerify: (idx: number) => void, isPolished: boolean, isAnalyzing: boolean, activeKnowledge: any 
+    index: number, instanceState: ReviewerInstanceState, payload: TransformedPayload | null, onChat: (idx: number, msg: string) => void, onVerify: (idx: number) => void, onCommit: (idx: number) => void, isPolished: boolean, isAnalyzing: boolean, isSyncing: boolean, activeKnowledge: any 
 }) => {
     const [inputValue, setInputValue] = useState("");
     const [isInspectorOpen, setInspectorOpen] = useState(false);
@@ -58,6 +58,8 @@ const ReviewerInstanceRow = memo(({
     if (triangulation?.confidence_verdict === 'HIGH') confidenceColor = 'text-emerald-300 bg-emerald-900/30 border-emerald-500/50';
     else if (triangulation?.confidence_verdict === 'MEDIUM') confidenceColor = 'text-yellow-300 bg-yellow-900/30 border-yellow-500/50';
     else if (triangulation?.confidence_verdict === 'LOW') confidenceColor = 'text-red-300 bg-red-900/30 border-red-500/50';
+    
+    const hasStrategy = !!instanceState.reviewerStrategy?.overrides?.length;
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,6 +114,7 @@ const ReviewerInstanceRow = memo(({
                  </div>
 
                  <div className="flex items-center space-x-2">
+                     {/* Semantic Inspector Toggle */}
                      <button 
                         onClick={() => setInspectorOpen(!isInspectorOpen)}
                         className={`p-1.5 rounded transition-colors ${isInspectorOpen ? 'bg-indigo-500/20 text-indigo-300' : 'text-slate-500 hover:text-slate-300'}`}
@@ -119,6 +122,23 @@ const ReviewerInstanceRow = memo(({
                      >
                          <Search className="w-3.5 h-3.5" />
                      </button>
+                     
+                     {/* Push to Physics Button (Feedback Loop) */}
+                     <button
+                        onClick={() => onCommit(index)}
+                        disabled={!hasStrategy || isSyncing}
+                        className={`flex items-center space-x-1 px-2 py-1 rounded transition-all shadow-sm border text-[9px] font-bold uppercase tracking-wide
+                            ${hasStrategy 
+                                ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500' 
+                                : 'bg-slate-700 text-slate-500 border-slate-600 cursor-not-allowed opacity-50'}
+                        `}
+                        title={hasStrategy ? "Commit constraints to Remapper logic" : "No overrides to commit"}
+                     >
+                         <Zap className={`w-3 h-3 ${isSyncing ? 'animate-pulse' : ''}`} />
+                         <span>{isSyncing ? 'Syncing...' : 'Push Fixes'}</span>
+                     </button>
+
+                     {/* Verify Button */}
                      {isPolished ? (
                          <div className="flex items-center space-x-1 px-2 py-1 bg-emerald-900/20 border border-emerald-500/30 rounded text-emerald-400">
                              <ShieldCheck className="w-3 h-3" />
@@ -215,8 +235,9 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
     const edges = useEdges();
     const { setNodes } = useReactFlow();
     const updateNodeInternals = useUpdateNodeInternals();
-    const { payloadRegistry, updatePayload, unregisterNode, knowledgeRegistry } = useProceduralStore();
+    const { payloadRegistry, updatePayload, unregisterNode, knowledgeRegistry, registerFeedback } = useProceduralStore();
     const [analyzingInstances, setAnalyzingInstances] = useState<Record<number, boolean>>({});
+    const [syncingInstances, setSyncingInstances] = useState<Record<number, boolean>>({});
 
     useEffect(() => { return () => unregisterNode(id); }, [id, unregisterNode]);
     useEffect(() => { updateNodeInternals(id); }, [id, instanceCount, updateNodeInternals]);
@@ -226,6 +247,14 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
         if (!edge) return null;
         return knowledgeRegistry[edge.source];
     }, [edges, id, knowledgeRegistry]);
+
+    // Upstream Lookup: Identify which Remapper corresponds to this instance index
+    const findUpstreamRemapper = useCallback((index: number) => {
+        // The Reviewer input 'source-in-X' is connected to the Remapper output 'result-out-X'
+        const edge = edges.find(e => e.target === id && e.targetHandle === `source-in-${index}`);
+        if (!edge) return null;
+        return { nodeId: edge.source, handleId: edge.sourceHandle || '' };
+    }, [edges, id]);
 
     const updateInstanceState = useCallback((index: number, updates: Partial<ReviewerInstanceState>) => {
         setNodes((nds) => nds.map((n) => {
@@ -318,18 +347,12 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
                 timestamp: Date.now()
             };
 
-            // Update Chat History
+            // Update Chat History and Reviewer Strategy
             const newHistory = [...currentHistory, aiMessage];
-            updateInstanceState(index, { chatHistory: newHistory, reviewerStrategy: { CARO_Audit: "Manual Adjustment", overrides: json.overrides } });
-
-            // CRITICAL: We need to trigger a re-render in the Remapper upstream.
-            // We do this by updating the 'payload' with a special flag or by signaling via store.
-            // For now, we update the local display to show verified, but ideally this feedback loop goes to the Remapper.
-            // In this passive architecture, we assume the user accepts the visual confirmation.
-            
-            // Note: To fully support "Moving" pixels, the Remapper needs to listen to Reviewer Overrides. 
-            // Currently, this manual mode is a "Simulation" unless we wire the Reviewer Strategy back to the Remapper input.
-            // Given the complexity, we will treat this as a "Soft Verification" for now.
+            updateInstanceState(index, { 
+                chatHistory: newHistory, 
+                reviewerStrategy: { CARO_Audit: "Manual Adjustment", overrides: json.overrides } 
+            });
 
         } catch (e) {
             console.error("Manual Audit Failed", e);
@@ -342,14 +365,8 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
 
     const handleChat = (index: number, message: string) => {
         const instanceState = reviewerInstances[index] || DEFAULT_INSTANCE_STATE;
-        const payload = payloadRegistry[id]?.[`result-in-${index}`]; 
         
-        // Note: The input payload usually comes from the Remapper's OUTPUT (source-out -> result-in)
-        // We need to find the correct edge key. Based on Remapper logic: 'result-out-X'.
-        // The edge connects Remapper 'result-out-X' to Reviewer 'source-in-X'.
-        // So we look for the payload registered by the Remapper.
-        
-        // Finding the source payload:
+        // Find input payload
         const edge = edges.find(e => e.target === id && e.targetHandle === `source-in-${index}`);
         const sourcePayload = edge ? payloadRegistry[edge.source]?.[edge.sourceHandle || ''] : null;
 
@@ -368,9 +385,35 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
         performManualAudit(index, message, newHistory, sourcePayload);
     };
 
+    const handleCommit = useCallback((index: number) => {
+        const instanceState = (data.reviewerInstances || {})[index];
+        if (!instanceState?.reviewerStrategy) return;
+    
+        const upstream = findUpstreamRemapper(index);
+        if (!upstream) {
+            console.warn("No upstream Remapper found for commit");
+            return;
+        }
+    
+        const feedback: FeedbackStrategy = {
+            overrides: instanceState.reviewerStrategy.overrides,
+            isCommitted: true
+        };
+    
+        // UI Feedback state
+        setSyncingInstances(prev => ({ ...prev, [index]: true }));
+        
+        // Dispatch to Global Store
+        registerFeedback(upstream.nodeId, upstream.handleId, feedback);
+    
+        // Simulate network/processing delay for UX
+        setTimeout(() => {
+            setSyncingInstances(prev => ({ ...prev, [index]: false }));
+        }, 600);
+    }, [data.reviewerInstances, findUpstreamRemapper, registerFeedback]);
+
     const handleVerify = (index: number) => {
-        // "Verify" simply passes the payload through as 'polished' / 'final'.
-        // It stamps it with isPolished: true.
+        // "Verify" passes the payload through as 'polished' without changing geometry.
         const edge = edges.find(e => e.target === id && e.targetHandle === `source-in-${index}`);
         const sourcePayload = edge ? payloadRegistry[edge.source]?.[edge.sourceHandle || ''] : null;
 
@@ -383,15 +426,12 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
         }
     };
     
-    // Auto-Pass-Through for initial display (Passive Mode)
-    // We strictly do NOT modify the payload, just expose it on our output handle for the Visualizer.
+    // Auto-Pass-Through for initial display
     useEffect(() => {
         for (let i = 0; i < instanceCount; i++) {
             const edge = edges.find(e => e.target === id && e.targetHandle === `source-in-${i}`);
             const sourcePayload = edge ? payloadRegistry[edge.source]?.[edge.sourceHandle || ''] : null;
             
-            // If we have an input, but haven't emitted an output yet, emit it raw.
-            // This ensures the Visualizer sees the image immediately.
             const myOutput = payloadRegistry[id]?.[`result-out-${i}`];
             if (sourcePayload && !myOutput) {
                 updatePayload(id, `result-out-${i}`, { ...sourcePayload, isPolished: false });
@@ -440,8 +480,10 @@ export const DesignReviewerNode = memo(({ id, data }: NodeProps<PSDNodeData>) =>
                                 payload={sourcePayload}
                                 onChat={handleChat}
                                 onVerify={handleVerify}
+                                onCommit={handleCommit}
                                 isPolished={isPolished}
                                 isAnalyzing={!!analyzingInstances[i]}
+                                isSyncing={!!syncingInstances[i]}
                                 activeKnowledge={activeKnowledge}
                             />
                             <Handle type="source" position={Position.Right} id={`result-out-${i}`} className="!absolute !-right-2 !top-8 !w-3 !h-3 !rounded-full !bg-emerald-500 !border-2 !border-slate-800 z-50" />
