@@ -737,7 +737,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
             result.push({ index: i, source: sourceData, target: targetData, payload, strategyUsed });
         }
         return result;
-    }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, payloadRegistry, globalGenerationAllowed, instanceSettings, feedbackRegistry]);
+    }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, globalGenerationAllowed, instanceSettings, feedbackRegistry]);
 
     useEffect(() => {
         instances.forEach(instance => {
