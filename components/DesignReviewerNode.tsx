@@ -43,6 +43,49 @@ const SemanticBadge = ({ role, anchorId, citedRule }: SemanticBadgeProps) => {
     );
 };
 
+// Helper for Recursive Layer Lookup
+const findLayerRecursive = (layers: TransformedLayer[], id: string): TransformedLayer | undefined => {
+    for (const layer of layers) {
+        if (layer.id === id) return layer;
+        if (layer.children) {
+            const found = findLayerRecursive(layer.children, id);
+            if (found) return found;
+        }
+    }
+    return undefined;
+};
+
+// Core Synchronization Logic
+const checkSynchronization = (payload: TransformedPayload | null, strategy: ReviewerStrategy | null): boolean => {
+    if (!payload || !strategy?.overrides?.length) return true; // No overrides = synced by default
+    
+    const targetX = payload.targetBounds?.x || 0;
+    const targetY = payload.targetBounds?.y || 0;
+    const EPSILON_PIXEL = 1.0; // Tolerance for layout engine rounding
+    const EPSILON_SCALE = 0.01;
+
+    for (const override of strategy.overrides) {
+        const layer = findLayerRecursive(payload.layers, override.layerId);
+        
+        // If the layer we want to move doesn't exist in the payload, we are definitely NOT synced.
+        if (!layer) return false;
+
+        // Calculate expected absolute position based on override logic (Target Relative)
+        const expectedX = targetX + override.xOffset;
+        const expectedY = targetY + override.yOffset;
+        
+        // Check Position
+        if (Math.abs(layer.coords.x - expectedX) > EPSILON_PIXEL) return false;
+        if (Math.abs(layer.coords.y - expectedY) > EPSILON_PIXEL) return false;
+        
+        // Check Scale (Global Scale * Individual Scale)
+        const expectedScale = payload.scaleFactor * override.individualScale;
+        if (Math.abs(layer.transform.scaleX - expectedScale) > EPSILON_SCALE) return false;
+    }
+
+    return true;
+};
+
 const ReviewerInstanceRow = memo(({ 
     index, instanceState, payload, onChat, onVerify, onCommit, isPolished, isAnalyzing, isSyncing, activeKnowledge 
 }: { 
@@ -50,6 +93,7 @@ const ReviewerInstanceRow = memo(({
 }) => {
     const [inputValue, setInputValue] = useState("");
     const [isInspectorOpen, setInspectorOpen] = useState(false);
+    const [isSynced, setIsSynced] = useState<boolean>(true);
     const chatEndRef = useRef<HTMLDivElement>(null);
     
     // Phase 3b: Confidence Visualization
@@ -60,6 +104,12 @@ const ReviewerInstanceRow = memo(({
     else if (triangulation?.confidence_verdict === 'LOW') confidenceColor = 'text-red-300 bg-red-900/30 border-red-500/50';
     
     const hasStrategy = !!instanceState.reviewerStrategy?.overrides?.length;
+
+    // Detect Synchronization Status
+    useEffect(() => {
+        const synced = checkSynchronization(payload, instanceState.reviewerStrategy);
+        setIsSynced(synced);
+    }, [payload, instanceState.reviewerStrategy]);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -126,16 +176,23 @@ const ReviewerInstanceRow = memo(({
                      {/* Push to Physics Button (Feedback Loop) */}
                      <button
                         onClick={() => onCommit(index)}
-                        disabled={!hasStrategy || isSyncing}
+                        disabled={!hasStrategy || isSyncing || isSynced}
                         className={`flex items-center space-x-1 px-2 py-1 rounded transition-all shadow-sm border text-[9px] font-bold uppercase tracking-wide
-                            ${hasStrategy 
-                                ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500' 
-                                : 'bg-slate-700 text-slate-500 border-slate-600 cursor-not-allowed opacity-50'}
+                            ${!hasStrategy
+                                ? 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
+                                : isSynced 
+                                    ? 'bg-slate-700 text-emerald-400 border-emerald-500/30 cursor-not-allowed opacity-80'
+                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 animate-pulse-slow'
+                            }
                         `}
-                        title={hasStrategy ? "Commit constraints to Remapper logic" : "No overrides to commit"}
+                        title={
+                            !hasStrategy ? "No adjustments made" : 
+                            isSynced ? "Physics engine reflects current adjustments" : 
+                            "Push adjustments to Remapper physics engine"
+                        }
                      >
-                         <Zap className={`w-3 h-3 ${isSyncing ? 'animate-pulse' : ''}`} />
-                         <span>{isSyncing ? 'Syncing...' : 'Push Fixes'}</span>
+                         {isSynced ? <Check className="w-3 h-3" /> : <Zap className={`w-3 h-3 ${isSyncing ? 'animate-pulse' : ''}`} />}
+                         <span>{isSyncing ? 'Syncing...' : isSynced ? 'Synced' : 'Push Fixes'}</span>
                      </button>
 
                      {/* Verify Button */}
