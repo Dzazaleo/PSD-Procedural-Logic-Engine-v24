@@ -556,7 +556,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                     if (depth === 0 && strategy) {
                         
                         // A. GRID SOLVER (Semantic: Only 'flow' items)
-                        // Phase 1.1 Fix: Grid Solver Lock - Exclude manually overridden layers
+                        // Phase 1.1 Fix: Grid Solver Lock
                         const gridCandidates = transformed.filter(l => {
                             const override = getOverride(l.id);
                             if (override) return false; // Immutable Lock
@@ -599,8 +599,6 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                                 const curr = flowItems[i];
                                 
                                 // Phase 1.2 Fix: Collision Solver Lock
-                                // If the current item has a manual override, treat it as an IMMOVABLE OBJECT.
-                                // Do not shift it. Let subsequent items flow around it (or overlap if inevitable).
                                 if (getOverride(curr.id)) continue; 
 
                                 const prevEnd = prev.coords.x + prev.coords.w;
@@ -616,6 +614,9 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                         // C. OVERLAY SOLVER (Semantic: Only 'overlay' items)
                         const overlayItems = transformed.filter(l => getOverride(l.id)?.layoutRole === 'overlay');
                         overlayItems.forEach(l => {
+                            // Phase 2.1 Fix: Overlay Lock
+                            if (getOverride(l.id)) return;
+
                             const anchorId = getOverride(l.id)?.linkedAnchorId;
                             if (anchorId) {
                                 const anchor = transformed.find(t => t.id === anchorId);
