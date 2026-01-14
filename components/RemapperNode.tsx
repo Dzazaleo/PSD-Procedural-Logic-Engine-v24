@@ -411,11 +411,17 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
     const updateNodeInternals = useUpdateNodeInternals();
     const edges = useEdges();
     const nodes = useNodes();
-    const { templateRegistry, resolvedRegistry, payloadRegistry, registerPayload, updatePayload, unregisterNode } = useProceduralStore();
+    const { templateRegistry, resolvedRegistry, payloadRegistry, registerPayload, updatePayload, unregisterNode, feedbackRegistry } = useProceduralStore();
     const globalGenerationAllowed = (data as any).remapperConfig?.generationAllowed ?? true;
 
     useEffect(() => { return () => unregisterNode(id); }, [id, unregisterNode]);
     useEffect(() => { updateNodeInternals(id); }, [id, instanceCount, updateNodeInternals]);
+    
+    // NEW: Temporary logging for validation
+    useEffect(() => {
+        console.log("Remapper Feedback Scope:", Object.keys(feedbackRegistry));
+    }, [feedbackRegistry]);
+
     useEffect(() => {
         const blobs = previousBlobsRef.current;
         return () => { Object.values(blobs).forEach((url) => { if (typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url); }); };
@@ -707,7 +713,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
             result.push({ index: i, source: sourceData, target: targetData, payload, strategyUsed });
         }
         return result;
-    }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, payloadRegistry, globalGenerationAllowed, instanceSettings]);
+    }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, payloadRegistry, globalGenerationAllowed, instanceSettings, feedbackRegistry]);
 
     useEffect(() => {
         instances.forEach(instance => {

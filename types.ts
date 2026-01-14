@@ -304,6 +304,8 @@ export interface PSDNodeData {
   reviewerInstances?: Record<number, ReviewerInstanceState>; 
   
   inspectorState?: InspectorState;
+
+  error?: string | null;
 }
 
 export interface TargetTemplateData {
